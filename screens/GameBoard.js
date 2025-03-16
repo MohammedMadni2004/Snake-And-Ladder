@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   Text,
@@ -14,8 +14,8 @@ const GameBoard = ({ route }) => {
   const [playerPositions, setPlayerPositions] = useState(
     Array(numberOfPlayers).fill(0)
   );
-  const [winner, setWinner] = useState([]);
-    const [showWinners, setShowWinners] = useState(false);
+  const [winners, setWinners] = useState([]);
+  const [gameEnded, setGameEnded] = useState(false);
   const [gameMessage, setGameMessage] = useState("Roll the dice to start!");
 
   const snakesAndLadders = {
@@ -36,7 +36,24 @@ const GameBoard = ({ route }) => {
     99: 78,
   };
 
+  const findNextActivePlayer = (currentIdx) => {
+    let nextIdx = (currentIdx + 1) % numberOfPlayers;
+    let count = 0;
+
+    while (count < numberOfPlayers) {
+      if (!winners.includes(nextIdx)) {
+        return nextIdx;
+      }
+      nextIdx = (nextIdx + 1) % numberOfPlayers;
+      count++;
+    }
+
+    return nextIdx;
+  };
+
   const rollDice = () => {
+    if (gameEnded) return;
+
     const value = Math.floor(Math.random() * 6) + 1;
     setDiceValue(value);
     movePlayer(value);
@@ -52,7 +69,7 @@ const GameBoard = ({ route }) => {
       positions[currentPlayer] = newPosition;
 
       if (Object.prototype.hasOwnProperty.call(snakesAndLadders, newPosition)) {
-      const isLadder = snakesAndLadders[newPosition] > newPosition;
+        const isLadder = snakesAndLadders[newPosition] > newPosition;
         setGameMessage(
           isLadder
             ? `Player ${
@@ -67,27 +84,38 @@ const GameBoard = ({ route }) => {
               }!`
         );
         positions[currentPlayer] = snakesAndLadders[newPosition];
-        
       } else {
         setGameMessage(
           `Player ${currentPlayer + 1} moved to position ${newPosition}`
         );
       }
+
       if (positions[currentPlayer] === 100) {
-        setGameMessage(`Player ${currentPlayer + 1} wins the game!`);
-        setWinner((prevWinners) => {
-          const updatedWinners = [...prevWinners, currentPlayer];
-          if (updatedWinners.length === numberOfPlayers-1) {
-            setShowWinners(true);
+        if (!winners.includes(currentPlayer)) {
+          const newWinners = [...winners, currentPlayer];
+          setWinners(newWinners);
+          setGameMessage(
+            `Player ${currentPlayer + 1} has reached the finish line!`
+          );
+
+          if (newWinners.length === numberOfPlayers - 1) {
+            const loser = Array.from(Array(numberOfPlayers).keys()).find(
+              (player) => !newWinners.includes(player)
+            );
+
+            setGameMessage(`Game over! Player ${loser + 1} lost the game.`);
+            setGameEnded(true);
           }
-          return updatedWinners;
-        });
+        }
       }
-      
     }
 
     setPlayerPositions(positions);
-    setCurrentPlayer((currentPlayer + 1) % numberOfPlayers);
+
+    if (!gameEnded) {
+      const nextPlayer = findNextActivePlayer(currentPlayer);
+      setCurrentPlayer(nextPlayer);
+    }
   };
 
   return (
@@ -105,10 +133,9 @@ const GameBoard = ({ route }) => {
                       ? 100 - rowIdx * 10 - colIdx
                       : 100 - rowIdx * 10 - 9 + colIdx;
 
-                      const playersOnCell = (playerPositions || [])
-                      .map((pos, idx) => (pos === cellNumber ? idx : -1))
-                      .filter((idx) => idx !== -1);
-                    
+                  const playersOnCell = (playerPositions || [])
+                    .map((pos, idx) => (pos === cellNumber ? idx : -1))
+                    .filter((idx) => idx !== -1);
 
                   return (
                     <View
@@ -151,11 +178,17 @@ const GameBoard = ({ route }) => {
                   style={[
                     styles.playerIndicator,
                     { backgroundColor: getPlayerColor(idx) },
+                    winners.includes(idx) && styles.winnerIndicator,
                   ]}
                 />
-                <Text style={styles.playerText}>
+                <Text
+                  style={[
+                    styles.playerText,
+                    winners.includes(idx) && styles.winnerText,
+                  ]}
+                >
                   Player {idx + 1}: Position {position}
-                  
+                  {winners.includes(idx) ? " 🏆" : ""}
                 </Text>
               </View>
             ))}
@@ -165,39 +198,63 @@ const GameBoard = ({ route }) => {
             <Text style={styles.diceValue}>{diceValue || "-"}</Text>
           </View>
 
-          <TouchableOpacity
-            style={[
-              styles.rollButton,
-              playerPositions[currentPlayer] === 100 && styles.disabledButton,
-            ]}
-            onPress={rollDice}
-            {...(playerPositions[currentPlayer] === 100 && setCurrentPlayer((currentPlayer + 1) % numberOfPlayers))}
-            // disabled={playerPositions[currentPlayer] === 100}
-          >
-            <Text style={styles.rollButtonText}>
-              {`Player ${currentPlayer + 1} Roll Dice`}
-            </Text>
-          </TouchableOpacity>
+          {!gameEnded ? (
+            <TouchableOpacity
+              style={[
+                styles.rollButton,
+                winners.includes(currentPlayer) && styles.disabledButton,
+              ]}
+              onPress={rollDice}
+              disabled={winners.includes(currentPlayer)}
+            >
+              <Text style={styles.rollButtonText}>
+                {`Player ${currentPlayer + 1} Roll Dice`}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.gameOverText}>Game Over</Text>
+          )}
         </View>
       </View>
-      {showWinners && <View>
-        <Text style={styles.title}>Winners</Text>
-        <View style={styles.playerInfo}>
-            {winner.map((playerIndex) => (
-              <View key={playerIndex} style={styles.playerStatus}>
+
+      {gameEnded && (
+        <View style={styles.winnersContainer}>
+          <Text style={styles.winnersTitle}>Winners</Text>
+          <View style={styles.winnersList}>
+            {winners.map((playerIndex, i) => (
+              <View key={playerIndex} style={styles.winnerItem}>
                 <View
                   style={[
                     styles.playerIndicator,
                     { backgroundColor: getPlayerColor(playerIndex) },
+                    styles.winnerIndicator,
                   ]}
                 />
-                <Text style={styles.playerText}>
-                  Player {playerIndex + 1}
+                <Text style={styles.winnerText}>
+                  {i + 1}. Player {playerIndex + 1}
                 </Text>
               </View>
             ))}
+
+            {Array.from(Array(numberOfPlayers).keys())
+              .filter((player) => !winners.includes(player))
+              .map((playerIndex) => (
+                <View key={`loser-${playerIndex}`} style={styles.winnerItem}>
+                  <View
+                    style={[
+                      styles.playerIndicator,
+                      { backgroundColor: getPlayerColor(playerIndex) },
+                      styles.loserIndicator,
+                    ]}
+                  />
+                  <Text style={styles.loserText}>
+                    {winners.length + 1}. Player {playerIndex + 1} (Lost)
+                  </Text>
+                </View>
+              ))}
           </View>
-      </View>}
+        </View>
+      )}
     </ScrollView>
   );
 };
@@ -313,6 +370,55 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  winnerIndicator: {
+    borderWidth: 2,
+    borderColor: "gold",
+  },
+  loserIndicator: {
+    borderWidth: 2,
+    borderColor: "#999",
+  },
+  winnerText: {
+    fontSize: 15,
+    fontWeight: "bold",
+    color: "#2E7D32",
+  },
+  loserText: {
+    fontSize: 15,
+    fontStyle: "italic",
+    color: "#757575",
+  },
+  winnersContainer: {
+    margin: 15,
+    padding: 15,
+    backgroundColor: "#f9f9f9",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  winnersTitle: {
+    fontSize: 22,
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 15,
+    color: "#333",
+  },
+  winnersList: {
+    marginVertical: 10,
+  },
+  winnerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 8,
+    paddingVertical: 5,
+  },
+  gameOverText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#D32F2F",
+    textAlign: "center",
+    marginVertical: 10,
   },
 });
 
