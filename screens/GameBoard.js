@@ -14,6 +14,8 @@ const GameBoard = ({ route }) => {
   const [playerPositions, setPlayerPositions] = useState(
     Array(numberOfPlayers).fill(0)
   );
+  const [winner, setWinner] = useState([]);
+    const [showWinners, setShowWinners] = useState(false);
   const [gameMessage, setGameMessage] = useState("Roll the dice to start!");
 
   const snakesAndLadders = {
@@ -49,8 +51,8 @@ const GameBoard = ({ route }) => {
     } else {
       positions[currentPlayer] = newPosition;
 
-      if (snakesAndLadders[newPosition]) {
-        const isLadder = snakesAndLadders[newPosition] > newPosition;
+      if (Object.prototype.hasOwnProperty.call(snakesAndLadders, newPosition)) {
+      const isLadder = snakesAndLadders[newPosition] > newPosition;
         setGameMessage(
           isLadder
             ? `Player ${
@@ -65,15 +67,23 @@ const GameBoard = ({ route }) => {
               }!`
         );
         positions[currentPlayer] = snakesAndLadders[newPosition];
+        
       } else {
         setGameMessage(
           `Player ${currentPlayer + 1} moved to position ${newPosition}`
         );
       }
-
       if (positions[currentPlayer] === 100) {
         setGameMessage(`Player ${currentPlayer + 1} wins the game!`);
+        setWinner((prevWinners) => {
+          const updatedWinners = [...prevWinners, currentPlayer];
+          if (updatedWinners.length === numberOfPlayers-1) {
+            setShowWinners(true);
+          }
+          return updatedWinners;
+        });
       }
+      
     }
 
     setPlayerPositions(positions);
@@ -95,9 +105,10 @@ const GameBoard = ({ route }) => {
                       ? 100 - rowIdx * 10 - colIdx
                       : 100 - rowIdx * 10 - 9 + colIdx;
 
-                  const playersOnCell = playerPositions
-                    .map((pos, idx) => (pos === cellNumber ? idx : -1))
-                    .filter((idx) => idx !== -1);
+                      const playersOnCell = (playerPositions || [])
+                      .map((pos, idx) => (pos === cellNumber ? idx : -1))
+                      .filter((idx) => idx !== -1);
+                    
 
                   return (
                     <View
@@ -144,6 +155,7 @@ const GameBoard = ({ route }) => {
                 />
                 <Text style={styles.playerText}>
                   Player {idx + 1}: Position {position}
+                  
                 </Text>
               </View>
             ))}
@@ -159,7 +171,8 @@ const GameBoard = ({ route }) => {
               playerPositions[currentPlayer] === 100 && styles.disabledButton,
             ]}
             onPress={rollDice}
-            disabled={playerPositions[currentPlayer] === 100}
+            {...(playerPositions[currentPlayer] === 100 && setCurrentPlayer((currentPlayer + 1) % numberOfPlayers))}
+            // disabled={playerPositions[currentPlayer] === 100}
           >
             <Text style={styles.rollButtonText}>
               {`Player ${currentPlayer + 1} Roll Dice`}
@@ -167,6 +180,24 @@ const GameBoard = ({ route }) => {
           </TouchableOpacity>
         </View>
       </View>
+      {showWinners && <View>
+        <Text style={styles.title}>Winners</Text>
+        <View style={styles.playerInfo}>
+            {winner.map((playerIndex) => (
+              <View key={playerIndex} style={styles.playerStatus}>
+                <View
+                  style={[
+                    styles.playerIndicator,
+                    { backgroundColor: getPlayerColor(playerIndex) },
+                  ]}
+                />
+                <Text style={styles.playerText}>
+                  Player {playerIndex + 1}
+                </Text>
+              </View>
+            ))}
+          </View>
+      </View>}
     </ScrollView>
   );
 };
