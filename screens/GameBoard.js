@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from "react";
+import styles from "./GameBoardStyles";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ScrollView,
+  Dimensions,
+  Animated,
+  Easing,
 } from "react-native";
+import Svg, { Path, Line, Circle, G, Ellipse } from "react-native-svg";
 
 const GameBoard = ({ route }) => {
   const { numberOfPlayers } = route.params;
@@ -17,7 +22,17 @@ const GameBoard = ({ route }) => {
   const [winners, setWinners] = useState([]);
   const [gameEnded, setGameEnded] = useState(false);
   const [gameMessage, setGameMessage] = useState("Roll the dice to start!");
-
+  const [boardSize, setBoardSize] = useState({ width: 350, height: 350 });
+  const [cellPositions, setCellPositions] = useState({});
+  const [isAnimating, setIsAnimating] = useState(false);
+  
+  const diceAnimation = useRef(new Animated.Value(0)).current;
+  const playerAnimations = useRef(Array(numberOfPlayers).fill().map(() => ({
+    position: new Animated.ValueXY({ x: 0, y: 0 }),
+    scale: new Animated.Value(1),
+    rotation: new Animated.Value(0)
+  }))).current;
+  
   const snakesAndLadders = {
     4: 14,
     9: 31,
@@ -36,6 +51,27 @@ const GameBoard = ({ route }) => {
     99: 78,
   };
 
+  useEffect(() => {
+    const cellSize = boardSize.width / 10;
+    const positions = {};
+
+    for (let row = 0; row < 10; row++) {
+      for (let col = 0; col < 10; col++) {
+        const cellNumber = row % 2 === 0 
+          ? 100 - row * 10 - col 
+          : 100 - row * 10 - 9 + col;
+          
+        positions[cellNumber] = {
+          x: col * cellSize + cellSize / 2,
+          y: row * cellSize + cellSize / 2,
+          cellSize: cellSize
+        };
+      }
+    }
+    
+    setCellPositions(positions);
+  }, [boardSize]);
+
   const findNextActivePlayer = (currentIdx) => {
     let nextIdx = (currentIdx + 1) % numberOfPlayers;
     let count = 0;
@@ -51,25 +87,198 @@ const GameBoard = ({ route }) => {
     return nextIdx;
   };
 
-  const rollDice = () => {
-    if (gameEnded) return;
-
-    const value = Math.floor(Math.random() * 6) + 1;
-    setDiceValue(value);
-    movePlayer(value);
+  const animateDiceRoll = () => {
+    diceAnimation.setValue(0);
+    
+    return Animated.timing(diceAnimation, {
+      toValue: 1,
+      duration: 1000,
+      easing: Easing.bounce,
+      useNativeDriver: true
+    }).start();
+  };
+  
+  const animatePlayerMovement = (playerIdx, fromPos, toPos) => {
+    if (!cellPositions[fromPos] || !cellPositions[toPos]) return Promise.resolve();
+    
+    const fromX = cellPositions[fromPos]?.x || 0;
+    const fromY = cellPositions[fromPos]?.y || 0;
+    const toX = cellPositions[toPos]?.x || 0;
+    const toY = cellPositions[toPos]?.y || 0;
+    
+    playerAnimations[playerIdx].position.setValue({ x: fromX, y: fromY });
+    
+    return new Promise((resolve) => {
+      Animated.sequence([
+        Animated.timing(playerAnimations[playerIdx].position, {
+          toValue: { x: toX, y: toY },
+          duration: 500,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true
+        }),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1.3,
+          duration: 200,
+          useNativeDriver: true
+        }),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true
+        })
+      ]).start(resolve);
+    });
+  };
+  
+  const animateLadderClimb = (playerIdx, fromPos, toPos) => {
+    if (!cellPositions[fromPos] || !cellPositions[toPos]) return Promise.resolve();
+    
+    const fromX = cellPositions[fromPos]?.x || 0;
+    const fromY = cellPositions[fromPos]?.y || 0;
+    const toX = cellPositions[toPos]?.x || 0;
+    const toY = cellPositions[toPos]?.y || 0;
+    
+    playerAnimations[playerIdx].position.setValue({ x: fromX, y: fromY });
+    
+    return new Promise((resolve) => {
+      Animated.sequence([
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1.2,
+          duration: 200,
+          useNativeDriver: true
+        }),
+        Animated.parallel([
+          Animated.timing(playerAnimations[playerIdx].position, {
+            toValue: { x: toX, y: toY },
+            duration: 1000,
+            easing: Easing.out(Easing.back(2)),
+            useNativeDriver: true
+          }),
+          Animated.sequence([
+            Animated.timing(playerAnimations[playerIdx].rotation, {
+              toValue: 0.15,
+              duration: 250,
+              useNativeDriver: true
+            }),
+            Animated.timing(playerAnimations[playerIdx].rotation, {
+              toValue: -0.15,
+              duration: 250,
+              useNativeDriver: true
+            }),
+            Animated.timing(playerAnimations[playerIdx].rotation, {
+              toValue: 0.15,
+              duration: 250,
+              useNativeDriver: true
+            }),
+            Animated.timing(playerAnimations[playerIdx].rotation, {
+              toValue: 0,
+              duration: 250,
+              useNativeDriver: true
+            })
+          ])
+        ]),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1.5,
+          duration: 200,
+          useNativeDriver: true
+        }),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true
+        })
+      ]).start(resolve);
+    });
+  };
+  
+  const animateSnakeBite = (playerIdx, fromPos, toPos) => {
+    if (!cellPositions[fromPos] || !cellPositions[toPos]) return Promise.resolve();
+    
+    const fromX = cellPositions[fromPos]?.x || 0;
+    const fromY = cellPositions[fromPos]?.y || 0;
+    const toX = cellPositions[toPos]?.x || 0;
+    const toY = cellPositions[toPos]?.y || 0;
+    
+    playerAnimations[playerIdx].position.setValue({ x: fromX, y: fromY });
+    
+    return new Promise((resolve) => {
+      Animated.sequence([
+        // Shake with fear
+        Animated.sequence([
+          Animated.timing(playerAnimations[playerIdx].rotation, {
+            toValue: 0.2,
+            duration: 100,
+            useNativeDriver: true
+          }),
+          Animated.timing(playerAnimations[playerIdx].rotation, {
+            toValue: -0.2,
+            duration: 100,
+            useNativeDriver: true
+          }),
+          Animated.timing(playerAnimations[playerIdx].rotation, {
+            toValue: 0.2,
+            duration: 100,
+            useNativeDriver: true
+          }),
+          Animated.timing(playerAnimations[playerIdx].rotation, {
+            toValue: 0,
+            duration: 100,
+            useNativeDriver: true
+          }),
+        ]),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 0.5,
+          duration: 300,
+          useNativeDriver: true
+        }),
+        Animated.timing(playerAnimations[playerIdx].position, {
+          toValue: { x: toX, y: toY },
+          duration: 500,
+          easing: Easing.bounce,
+          useNativeDriver: true
+        }),
+        Animated.timing(playerAnimations[playerIdx].scale, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true
+        })
+      ]).start(resolve);
+    });
   };
 
-  const movePlayer = (steps) => {
-    const positions = [...playerPositions];
-    let newPosition = positions[currentPlayer] + steps;
+  const rollDice = async () => {
+    if (gameEnded || isAnimating) return;
+    
+    setIsAnimating(true);
+    
+    await new Promise((resolve) => {
+      animateDiceRoll();
+      setTimeout(resolve, 1000);
+    });
+    
+    const value = Math.floor(Math.random() * 6) + 1;
+    setDiceValue(value);
+    await movePlayer(value);
+    
+    setIsAnimating(false);
+  };
 
+  const movePlayer = async (steps) => {
+    const positions = [...playerPositions];
+    let oldPosition = positions[currentPlayer];
+    let newPosition = oldPosition + steps;
+    
     if (newPosition > 100) {
       setGameMessage(`You need exact number to reach 100. Try again!`);
     } else {
       positions[currentPlayer] = newPosition;
-
+      
+      await animatePlayerMovement(currentPlayer, oldPosition, newPosition);
+      
       if (Object.prototype.hasOwnProperty.call(snakesAndLadders, newPosition)) {
         const isLadder = snakesAndLadders[newPosition] > newPosition;
+        const oldPosBeforeEffect = newPosition;
+        
         setGameMessage(
           isLadder
             ? `Player ${
@@ -83,6 +292,13 @@ const GameBoard = ({ route }) => {
                 snakesAndLadders[newPosition]
               }!`
         );
+        
+        if (isLadder) {
+          await animateLadderClimb(currentPlayer, oldPosBeforeEffect, snakesAndLadders[newPosition]);
+        } else {
+          await animateSnakeBite(currentPlayer, oldPosBeforeEffect, snakesAndLadders[newPosition]);
+        }
+        
         positions[currentPlayer] = snakesAndLadders[newPosition];
       } else {
         setGameMessage(
@@ -118,12 +334,125 @@ const GameBoard = ({ route }) => {
     }
   };
 
+  const getSnakePath = (start, end) => {
+    if (!cellPositions[start] || !cellPositions[end]) return null;
+    
+    const startX = cellPositions[start].x;
+    const startY = cellPositions[start].y;
+    const endX = cellPositions[end].x;
+    const endY = cellPositions[end].y;
+    
+    const controlPoint1X = startX + (endX - startX) * 0.25;
+    const controlPoint1Y = startY + (endY - startY) * 0.25 + 20;
+    
+    const controlPoint2X = startX + (endX - startX) * 0.5;
+    const controlPoint2Y = startY + (endY - startY) * 0.5 - 20;
+    
+    const controlPoint3X = startX + (endX - startX) * 0.75;
+    const controlPoint3Y = startY + (endY - startY) * 0.75 + 20;
+    
+    return `M ${startX} ${startY} C ${controlPoint1X} ${controlPoint1Y}, ${controlPoint2X} ${controlPoint2Y}, ${controlPoint3X} ${controlPoint3Y} S ${endX} ${endY}, ${endX} ${endY}`;
+  };
+
+  const getSnakeHead = (start) => {
+    if (!cellPositions[start]) return null;
+    
+    return {
+      x: cellPositions[start].x,
+      y: cellPositions[start].y,
+      radius: cellPositions[start].cellSize / 5
+    };
+  };
+
+  const onBoardLayout = (event) => {
+    const { width, height } = event.nativeEvent.layout;
+    setBoardSize({ width, height: width });
+  };
+  
+  const renderRatToken = (playerIdx, size) => {
+    const color = getPlayerColor(playerIdx);
+    const eyeColor = "black";
+    const noseColor = "#FF9999";
+    const earColor = "#FFCCCC";
+    
+    return (
+      <G>
+        <Ellipse 
+          cx="0" 
+          cy="0" 
+          rx={size * 0.8} 
+          ry={size * 0.6} 
+          fill={color} 
+        />
+        
+        <Circle 
+          cx={size * 0.6} 
+          cy="0" 
+          r={size * 0.5} 
+          fill={color} 
+        />
+        
+        <Ellipse 
+          cx={size * 0.7} 
+          cy={-size * 0.6} 
+          rx={size * 0.3} 
+          ry={size * 0.4} 
+          fill={earColor} 
+        />
+        <Ellipse 
+          cx={size * 1.0} 
+          cy={-size * 0.5} 
+          rx={size * 0.3} 
+          ry={size * 0.4} 
+          fill={earColor} 
+        />
+        
+        <Circle 
+          cx={size * 0.8} 
+          cy={-size * 0.1} 
+          r={size * 0.15} 
+          fill={eyeColor} 
+        />
+        <Circle 
+          cx={size * 1.1} 
+          cy={-size * 0.1} 
+          r={size * 0.15} 
+          fill={eyeColor} 
+        />
+        
+        <Circle 
+          cx={size * 1.2} 
+          cy={size * 0.1} 
+          r={size * 0.15} 
+          fill={noseColor} 
+        />
+        
+        <Path 
+          d={`M ${-size * 0.7} 0 C ${-size * 1.2} ${size * 0.3}, ${-size * 1.5} ${-size * 0.3}, ${-size * 1.8} ${size * 0.1}`}
+          stroke={color}
+          strokeWidth={size * 0.3}
+          fill="none"
+        />
+      </G>
+    );
+  };
+
+  const diceRotation = diceAnimation.interpolate({
+    inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+    outputRange: ['0deg', '180deg', '360deg', '540deg', '720deg', '720deg']
+  });
+  
+  const diceScale = diceAnimation.interpolate({
+    inputRange: [0, 0.5, 0.7, 0.8, 0.9, 1],
+    outputRange: [1, 0.8, 1.2, 1.1, 1.05, 1]
+  });
+
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
         <Text style={styles.title}>Snake and Ladder</Text>
 
-        <View style={styles.gameBoard}>
+        <View style={styles.gameBoard} onLayout={onBoardLayout}>
           <View style={styles.boardGrid}>
             {[...Array(10)].map((_, rowIdx) => (
               <View key={rowIdx} style={styles.boardRow}>
@@ -151,20 +480,160 @@ const GameBoard = ({ route }) => {
                       ]}
                     >
                       <Text style={styles.cellNumber}>{cellNumber}</Text>
-                      {playersOnCell.map((playerIdx) => (
-                        <View
-                          key={playerIdx}
-                          style={[
-                            styles.playerToken,
-                            { backgroundColor: getPlayerColor(playerIdx) },
-                          ]}
-                        />
-                      ))}
                     </View>
                   );
                 })}
               </View>
             ))}
+
+            {Object.keys(cellPositions).length > 0 && (
+              <Svg
+                style={StyleSheet.absoluteFill}
+                width={boardSize.width}
+                height={boardSize.height}
+              >
+                {Object.entries(snakesAndLadders).map(
+                  ([start, end]) => {
+                    if (end > start && cellPositions[start] && cellPositions[end]) {
+                      const startCell = cellPositions[start];
+                      const endCell = cellPositions[end];
+                      
+                      return (
+                        <React.Fragment key={`ladder-${start}-${end}`}>
+                          <Line
+                            x1={startCell.x - startCell.cellSize / 4}
+                            y1={startCell.y}
+                            x2={endCell.x - endCell.cellSize / 4}
+                            y2={endCell.y}
+                            stroke="#8B4513"
+                            strokeWidth="3"
+                          />
+                          
+                          <Line
+                            x1={startCell.x + startCell.cellSize / 4}
+                            y1={startCell.y}
+                            x2={endCell.x + endCell.cellSize / 4}
+                            y2={endCell.y}
+                            stroke="#8B4513"
+                            strokeWidth="3"
+                          />
+                          
+                          {[0.2, 0.4, 0.6, 0.8].map((ratio, i) => {
+                            const rungY = startCell.y + (endCell.y - startCell.y) * ratio;
+                            const rungX1 = startCell.x - startCell.cellSize / 4 + 
+                                          (endCell.x - startCell.x - startCell.cellSize / 4) * ratio;
+                            const rungX2 = startCell.x + startCell.cellSize / 4 + 
+                                          (endCell.x - startCell.x + startCell.cellSize / 4) * ratio;
+                            
+                            return (
+                              <Line
+                                key={`rung-${start}-${end}-${i}`}
+                                x1={rungX1}
+                                y1={rungY}
+                                x2={rungX2}
+                                y2={rungY}
+                                stroke="#8B4513"
+                                strokeWidth="2"
+                              />
+                            );
+                          })}
+                        </React.Fragment>
+                      );
+                    }
+                    return null;
+                  }
+                )}
+                
+                {Object.entries(snakesAndLadders).map(
+                  ([start, end]) => {
+                    if (end < start) {
+                      const snakePath = getSnakePath(start, end);
+                      const snakeHead = getSnakeHead(start);
+                      
+                      if (snakePath && snakeHead) {
+                        return (
+                          <React.Fragment key={`snake-${start}-${end}`}>
+                            <Path
+                              d={snakePath}
+                              fill="none"
+                              stroke="#558B2F"
+                              strokeWidth="5"
+                              strokeLinecap="round"
+                            />
+                            
+                            <Circle
+                              cx={snakeHead.x}
+                              cy={snakeHead.y}
+                              r={snakeHead.radius}
+                              fill="#D32F2F"
+                            />
+                            
+                            <Circle
+                              cx={snakeHead.x - snakeHead.radius / 2}
+                              cy={snakeHead.y - snakeHead.radius / 2}
+                              r={snakeHead.radius / 4}
+                              fill="black"
+                            />
+                            <Circle
+                              cx={snakeHead.x + snakeHead.radius / 2}
+                              cy={snakeHead.y - snakeHead.radius / 2}
+                              r={snakeHead.radius / 4}
+                              fill="black"
+                            />
+                          </React.Fragment>
+                        );
+                      }
+                    }
+                    return null;
+                  }
+                )}
+                
+                {playerPositions.map((position, idx) => {
+                  if (position === 0) return null;
+                  
+                  const cell = cellPositions[position];
+                  if (!cell) return null;
+                  
+                  const cellSize = cell.cellSize || 20;
+                  const tokenSize = cellSize / 3;
+                  
+                  const offsetX = ((idx % 2) * 2 - 1) * (cellSize / 5);
+                  const offsetY = (Math.floor(idx / 2) * 2 - 1) * (cellSize / 5);
+                  
+                  const rotateInterpolate = playerAnimations[idx].rotation.interpolate({
+                    inputRange: [-1, 0, 1],
+                    outputRange: ['-30deg', '0deg', '30deg']
+                  });
+                  
+                  return (
+                    <Animated.View 
+                      key={`player-${idx}`}
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: tokenSize * 4,
+                        height: tokenSize * 4,
+                        marginLeft: -tokenSize * 2,
+                        marginTop: -tokenSize * 2,
+                        transform: [
+                          { translateX: playerAnimations[idx].position.x },
+                          { translateY: playerAnimations[idx].position.y },
+                          { translateX: offsetX },
+                          { translateY: offsetY },
+                          { scale: playerAnimations[idx].scale },
+                          { rotate: rotateInterpolate }
+                        ]
+                      }}
+                    >
+                      <Svg width="100%" height="100%" viewBox={`${-tokenSize * 2} ${-tokenSize * 2} ${tokenSize * 4} ${tokenSize * 4}`}>
+                        {renderRatToken(idx, tokenSize)}
+                      </Svg>
+                    </Animated.View>
+                  );
+                })}
+              </Svg>
+            )}
           </View>
         </View>
 
@@ -187,28 +656,38 @@ const GameBoard = ({ route }) => {
                     winners.includes(idx) && styles.winnerText,
                   ]}
                 >
-                  Player {idx + 1}: Position {position}
+                  Rat {idx + 1}: Position {position}
                   {winners.includes(idx) ? " 🏆" : ""}
                 </Text>
               </View>
             ))}
           </View>
 
-          <View style={styles.diceContainer}>
+          <Animated.View 
+            style={[
+              styles.diceContainer,
+              {
+                transform: [
+                  { rotate: diceRotation },
+                  { scale: diceScale }
+                ]
+              }
+            ]}
+          >
             <Text style={styles.diceValue}>{diceValue || "-"}</Text>
-          </View>
+          </Animated.View>
 
           {!gameEnded ? (
             <TouchableOpacity
               style={[
                 styles.rollButton,
-                winners.includes(currentPlayer) && styles.disabledButton,
+                (winners.includes(currentPlayer) || isAnimating) && styles.disabledButton,
               ]}
               onPress={rollDice}
-              disabled={winners.includes(currentPlayer)}
+              disabled={winners.includes(currentPlayer) || isAnimating}
             >
               <Text style={styles.rollButtonText}>
-                {`Player ${currentPlayer + 1} Roll Dice`}
+                {isAnimating ? "Rolling..." : `Rat ${currentPlayer + 1} Roll Dice`}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -231,7 +710,7 @@ const GameBoard = ({ route }) => {
                   ]}
                 />
                 <Text style={styles.winnerText}>
-                  {i + 1}. Player {playerIndex + 1}
+                  {i + 1}. Rat {playerIndex + 1}
                 </Text>
               </View>
             ))}
@@ -248,7 +727,7 @@ const GameBoard = ({ route }) => {
                     ]}
                   />
                   <Text style={styles.loserText}>
-                    {winners.length + 1}. Player {playerIndex + 1} (Lost)
+                    {winners.length + 1}. Rat {playerIndex + 1} (Lost)
                   </Text>
                 </View>
               ))}
@@ -264,162 +743,6 @@ function getPlayerColor(playerIndex) {
   return colors[playerIndex % colors.length];
 }
 
-const styles = StyleSheet.create({
-  scrollContainer: {
-    flexGrow: 1,
-  },
-  container: {
-    flex: 1,
-    padding: 10,
-    backgroundColor: "#f5f5f5",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginVertical: 10,
-  },
-  gameBoard: {
-    alignItems: "center",
-    marginVertical: 10,
-  },
-  boardGrid: {
-    borderWidth: 2,
-    borderColor: "#333",
-  },
-  boardRow: {
-    flexDirection: "row",
-  },
-  boardCell: {
-    width: 35,
-    height: 35,
-    borderWidth: 0.5,
-    borderColor: "#999",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#fff",
-  },
-  snakeCell: {
-    backgroundColor: "#ffcdd2",
-  },
-  ladderCell: {
-    backgroundColor: "#c8e6c9",
-  },
-  cellNumber: {
-    fontSize: 10,
-  },
-  gameControls: {
-    padding: 10,
-  },
-  gameMessage: {
-    fontSize: 16,
-    textAlign: "center",
-    marginVertical: 10,
-    fontWeight: "500",
-  },
-  playerInfo: {
-    marginVertical: 10,
-  },
-  playerStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 5,
-  },
-  playerIndicator: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  playerText: {
-    fontSize: 15,
-  },
-  diceContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    alignSelf: "center",
-    borderWidth: 2,
-    borderColor: "#333",
-    marginVertical: 15,
-  },
-  diceValue: {
-    fontSize: 30,
-    fontWeight: "bold",
-  },
-  rollButton: {
-    backgroundColor: "#03A9F4",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignSelf: "center",
-  },
-  rollButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  disabledButton: {
-    backgroundColor: "#BDBDBD",
-  },
-  playerToken: {
-    position: "absolute",
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  winnerIndicator: {
-    borderWidth: 2,
-    borderColor: "gold",
-  },
-  loserIndicator: {
-    borderWidth: 2,
-    borderColor: "#999",
-  },
-  winnerText: {
-    fontSize: 15,
-    fontWeight: "bold",
-    color: "#2E7D32",
-  },
-  loserText: {
-    fontSize: 15,
-    fontStyle: "italic",
-    color: "#757575",
-  },
-  winnersContainer: {
-    margin: 15,
-    padding: 15,
-    backgroundColor: "#f9f9f9",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  winnersTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 15,
-    color: "#333",
-  },
-  winnersList: {
-    marginVertical: 10,
-  },
-  winnerItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 8,
-    paddingVertical: 5,
-  },
-  gameOverText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#D32F2F",
-    textAlign: "center",
-    marginVertical: 10,
-  },
-});
 
 export default GameBoard;
+	

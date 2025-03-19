@@ -1,3 +1,4 @@
+import { StyleSheet } from "react-native";
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
@@ -163,3 +164,5 @@ winnerIndicator: {
     color: "#D32F2F",
   },
 });
+
+export default styles;
